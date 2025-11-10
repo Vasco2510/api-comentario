@@ -4,13 +4,28 @@ service: api-comentario
 provider:
   name: aws
   runtime: python3.13
-  # Default memory size for functions (default: 1024MB)
   memorySize: 1024
   timeout: 20
-  iam:
-    role: arn:aws:iam::197934125902:role/LabRole
+
+  # Variables de entorno para la Lambda
   environment:
     TABLE_NAME: ${sls:stage}-t_comentarios
+    BUCKET_NAME: ${sls:stage}-b-comentarios-ingesta # <-- NUEVA VARIABLE
+
+  # Permisos IAM que Serverless gestionará
+  iam:
+    role:
+      statements:
+        # Permiso para escribir en DynamoDB
+        - Effect: "Allow"
+          Action:
+            - "dynamodb:PutItem"
+          Resource: "arn:aws:dynamodb:${aws:region}:*:table/${self:provider.environment.TABLE_NAME}"
+        # Permiso para escribir en el nuevo Bucket S3
+        - Effect: "Allow"
+          Action:
+            - "s3:PutObject"
+          Resource: "arn:aws:s3:::${self:provider.environment.BUCKET_NAME}/*"
 
 functions:
   crear:
@@ -22,8 +37,10 @@ functions:
           cors: true
           integration: lambda
 
+# Recursos que Serverless creará (tablas, buckets, etc.)
 resources:
   Resources:
+    # Definición de la tabla DynamoDB (sin cambios)
     TablaComentarios:
       Type: AWS::DynamoDB::Table
       Properties:
@@ -38,5 +55,12 @@ resources:
             KeyType: HASH
           - AttributeName: uuid
             KeyType: RANGE
-        # Set the capacity to auto-scale
         BillingMode: PAY_PER_REQUEST
+
+    # --- NUEVO BUCKET S3 ---
+    # Definición del bucket S3 de ingesta
+    BucketIngestaComentarios:
+      Type: AWS::S3::Bucket
+      Properties:
+        # El nombre del bucket usará la variable de entorno
+        BucketName: ${self:provider.environment.BUCKET_NAME}
